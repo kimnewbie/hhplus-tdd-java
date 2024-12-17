@@ -49,8 +49,12 @@ public class PointService {
         UserPoint userPoint = userPointTable.selectById(userId);
         // 포인트 차감
         long addPoint = userPoint.point() - amount;
+
         // 포인트가 부족하면 예외 처리
-        if (addPoint < 0) {}
+        if (addPoint < 0) {
+            throw new IllegalStateException ("포인트가 부족합니다. 현재 잔액: " + userPoint.point());
+        }
+
         // 포인트 업데이트
         userPointTable.insertOrUpdate(userId, addPoint);
         // 사용 내역 기록
