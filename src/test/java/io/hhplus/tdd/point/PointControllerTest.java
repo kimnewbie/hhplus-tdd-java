@@ -41,27 +41,25 @@ class PointControllerTest {
         given(pointService.getUserPoint(userId)).willReturn(userPoint);
 
         // when - then
-        mockMvc.perform(get("/point/{id}", userId))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/point/{id}", userId)).andExpect(status().isOk());
     }
 
 
     @Test
     @DisplayName("특정 유저의 포인트 충전/이용 내역을 조회")
-    void getUserPointHistory() {
+    void getUserPointHistory() throws Exception {
         // given
         long userId = 1L;
         List<PointHistory> historyList = Collections.emptyList();
         given(pointService.getUserPointHistory(userId)).willReturn(historyList);
 
         // when-then
-        mockMvc.perform(get("/point/{id}/histories", userId))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/point/{id}/histories", userId)).andExpect(status().isOk());
     }
 
     @Test
     @DisplayName("특정 유저의 포인트를 충전하는 기능")
-    void chargeUserPoint() {
+    void chargeUserPoint() throws Exception {
         // given
         long userId = 1L;
         long amount = 1000L;
@@ -69,8 +67,9 @@ class PointControllerTest {
         given(pointService.chargeUserPoint(userId, amount)).willReturn(updated);
 
         // when-then
-        mockMvc.perform(MockMvcRequestBuilders.patch("/point/{id}/use", userId))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Collections.singletonMap("amount", amount)));
+        mockMvc.perform(MockMvcRequestBuilders.patch("/point/{id}/use", userId).contentType(MediaType.APPLICATION_JSON)  // contentType 설정
+                        .content(objectMapper.writeValueAsString(Collections.singletonMap("amount", amount))))  // 요청 본문에 데이터 설정
+                .andExpect(status().isOk());  // 응답 상태 검사
     }
+
 }
