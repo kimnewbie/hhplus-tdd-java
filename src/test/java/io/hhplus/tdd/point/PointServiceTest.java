@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,13 +32,16 @@ class PointServiceTest {
     @MockBean
     private PointHistoryTable pointHistoryTable;
 
+    @MockBean
+    private LockManager lockManager;
+
     @InjectMocks
     private PointValidator pointValidator;
 
 
     @BeforeEach
     void setUp() {
-        pointService = new PointService(userPointTable, pointHistoryTable, pointValidator);
+        pointService = new PointService(userPointTable, pointHistoryTable, pointValidator, lockManager);
     }
 
     @Test
@@ -203,4 +207,33 @@ class PointServiceTest {
         assertNotNull(result);
         assertEquals(result.size(), 2);
     }
+
+    @Test
+    @DisplayName("동시성 테스트: 여러 사용자가 동시에 포인트를 충전할 때 데이터 무결성 유지")
+    void concurrentChargePoint() throws InterruptedException {
+        // given
+        long userId = 1L;
+        UserPoint userPoint = new UserPoint(userId, 0L, System.currentTimeMillis());
+
+        // mock: 유저 포인트가 처음에 0으로 설정되어 있다고 가정
+        when(userPointTable.selectById(userId)).thenReturn(userPoint);
+
+        // when
+        // 비동기 작업을 실행합니다.
+        CompletableFuture<Void> task1 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 500L));
+        CompletableFuture<Void> task2 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 1500L));
+        CompletableFuture<Void> task3 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 5000L));
+
+        // 모든 비동기 작업이 완료될 때까지 기다립니다.
+        CompletableFuture.allOf(task1, task2, task3).join(); // 여기서는 join()이지만, 예외가 발생하면 get()을 사용할 수 있습니다.
+
+        // 비동기 작업들이 완료된 후 UserPoint를 가져옵니다.
+        UserPoint result = pointService.getUserPoint(userId);
+
+        // then
+        // 결과가 null이 아니어야 하고, 포인트 합계가 정확해야 합니다.
+        assertNotNull(result, "UserPoint should not be null after operations are completed.");
+        assertEquals(result.point(), 500 + 1500 + 5000, "The total point sum should be correct.");
+    }
+
 }
