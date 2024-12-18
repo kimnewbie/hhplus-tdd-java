@@ -1,10 +1,7 @@
-package io.hhplus.tdd.service;
+package io.hhplus.tdd.point;
 
 import io.hhplus.tdd.database.PointHistoryTable;
 import io.hhplus.tdd.database.UserPointTable;
-import io.hhplus.tdd.point.PointHistory;
-import io.hhplus.tdd.point.TransactionType;
-import io.hhplus.tdd.point.UserPoint;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,14 +10,19 @@ import java.util.List;
 public class PointService {
     private final UserPointTable userPointTable;
     private final PointHistoryTable pointHistoryTable;
+    private final PointValidator pointValidator;
 
-    public PointService(UserPointTable userPointTable, PointHistoryTable pointHistoryTable) {
+    public PointService(UserPointTable userPointTable, PointHistoryTable pointHistoryTable, PointValidator pointValidator) {
         this.userPointTable = userPointTable;
         this.pointHistoryTable = pointHistoryTable;
+        this.pointValidator = pointValidator;
     }
 
     // 특정 유저의 포인트를 조회
     public UserPoint getUserPoint(long userId) {
+        // validation :: 아이디 확인
+        pointValidator.checkUserId(userId);
+
         return userPointTable.selectById(userId);
     }
 
@@ -31,17 +33,22 @@ public class PointService {
 
     // 특정 유저의 포인트를 충전하는 기능
     public UserPoint chargeUserPoint(long userId, long amount) {
+        // validation :: 충전하려는 포인트가 0보다 커야한다.
+        pointValidator.checkReloadPoint(amount);
+
         // 기존 포인트 조회
         UserPoint userPoint = userPointTable.selectById(userId);
-        // 포인트 충전
-        long addPoint = userPoint.point() + amount;
+        if (userPoint == null) {
+            userPoint = UserPoint.empty(userId);
+        }
+
         // 포인트 업데이트
-        userPointTable.insertOrUpdate(userId, addPoint);
+        UserPoint totalUserPoint = userPointTable.insertOrUpdate(userId, userPoint.point() + amount);
+
         // 충전 내역 기록
         pointHistoryTable.insert(userId, amount, TransactionType.CHARGE, System.currentTimeMillis());
 
-        // 갱신된 포인트 반환
-        return userPointTable.selectById(userId);
+        return totalUserPoint;
     }
 
     // 특정 유저의 포인트를 사용하는 기능
@@ -63,5 +70,13 @@ public class PointService {
 
         // 갱신된 포인트 반환
         return userPointTable.selectById(userId);
+    }
+
+    // 히스토리 목록 조회
+    public List<PointHistory> getPointHistory(long userId) {
+        // validation :: 아이디 확인
+        pointValidator.checkUserId(userId);
+
+        return pointHistoryTable.selectAllByUserId(userId);
     }
 }
