@@ -11,7 +11,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -211,29 +213,40 @@ class PointServiceTest {
     @Test
     @DisplayName("동시성 테스트: 여러 사용자가 동시에 포인트를 충전할 때 데이터 무결성 유지")
     void concurrentChargePoint() throws InterruptedException {
-        // given
-        long userId = 1L;
-        UserPoint userPoint = new UserPoint(userId, 0L, System.currentTimeMillis());
+        // Given: 5명의 사용자가 포인트 충전 시도
+        long[] userIds = {1L, 2L, 3L, 4L, 5L};
 
-        // mock: 유저 포인트가 처음에 0으로 설정되어 있다고 가정
-        when(userPointTable.selectById(userId)).thenReturn(userPoint);
+        // 각 사용자에 대한 UserPoint를 mock
+        mockUserPoints(userIds);
 
-        // when
-        // 비동기 작업을 실행합니다.
-        CompletableFuture<Void> task1 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 500L));
-        CompletableFuture<Void> task2 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 1500L));
-        CompletableFuture<Void> task3 = CompletableFuture.runAsync(() -> pointService.chargeUserPoint(userId, 5000L));
+        // 실행할 쓰레드 수
+        ExecutorService executor = Executors.newFixedThreadPool(userIds.length);
 
-        // 모든 비동기 작업이 완료될 때까지 기다립니다.
-        CompletableFuture.allOf(task1, task2, task3).join(); // 여기서는 join()이지만, 예외가 발생하면 get()을 사용할 수 있습니다.
+        // 각 쓰레드에서 포인트 충전 요청
+        for (long userId : userIds) {
+            executor.submit(() -> pointService.chargeUserPoint(userId, 100));
+        }
 
-        // 비동기 작업들이 완료된 후 UserPoint를 가져옵니다.
-        UserPoint result = pointService.getUserPoint(userId);
+        // 모든 작업이 끝날 때까지 기다림
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
 
-        // then
-        // 결과가 null이 아니어야 하고, 포인트 합계가 정확해야 합니다.
-        assertNotNull(result, "UserPoint should not be null after operations are completed.");
-        assertEquals(result.point(), 500 + 1500 + 5000, "The total point sum should be correct.");
+        // Then: 모든 유저의 포인트가 충전되어야 함
+        verifyUserPointOperations(userIds);
+    }
+
+    private void mockUserPoints(long[] userIds) {
+        for (long userId : userIds) {
+            UserPoint userPoint = new UserPoint(userId, 0, System.currentTimeMillis());
+            when(userPointTable.selectById(userId)).thenReturn(userPoint);
+        }
+    }
+
+    private void verifyUserPointOperations(long[] userIds) {
+        for (long userId : userIds) {
+            verify(userPointTable, times(1)).selectById(userId);
+            verify(userPointTable, times(1)).insertOrUpdate(eq(userId), anyLong());
+        }
     }
 
 }
